@@ -44,7 +44,8 @@ class Visualization {
             arrowSize: 1.0,
             visible: true,
             component: 'mx',      // 'mx' | 'my' | 'mz'
-            colormap: 'viridis'   // colormap name
+            colormap: 'viridis',   // colormap name
+            displayRatio: 1.0   // For FEM: ratio of arrows to display (0-1)
         };
         
         // Surface configuration
@@ -190,6 +191,9 @@ class Visualization {
         this.arrowVisualization.setGridInfo(gridInfo.gridSize, gridInfo.dimensions);
         this.surfaceVisualization.setGridInfo(gridInfo.gridSize, gridInfo.dimensions);
 
+        // Toggle GUI controls for FD
+        this.updateArrowGUIControls('fd');
+
         this.updateSamplingRange();
         this.updateSurfacePositionRange();
     }
@@ -282,6 +286,8 @@ class Visualization {
      * @param {Object} data - Magnetization data (spin)
      */
     updateMagnetization(data) {
+        console.log('Visualization.updateMagnetization: has data:', !!data, 'meshType:', this.arrowVisualization?.meshType);
+        
         this.spin = data;
         this.hasSpinData = true;
         
@@ -523,17 +529,17 @@ class Visualization {
         this.gui.arrowFolder = arrowFolder;
         
         // Sampling method
-        arrowFolder.add(this.arrowConfig, 'sampling', ['cartesian', 'cylindrical'])
+        this.gui.samplingMethod = arrowFolder.add(this.arrowConfig, 'sampling', ['cartesian', 'cylindrical'])
             .name('Sampling Method')
             .onChange((value) => this.updateArrowConfig({ sampling: value }));
         
         // Sample density
-        const densityFolder = arrowFolder.addFolder('Sample Density');
-        this.gui.sampleNx = densityFolder.add(this.arrowConfig, 'sampleNx', 1, 50, 1)
+        this.gui.densityFolder = arrowFolder.addFolder('Sample Density');
+        this.gui.sampleNx = this.gui.densityFolder.add(this.arrowConfig, 'sampleNx', 1, 50, 1)
             .name('Nx').onFinishChange(() => this.updateArrowConfig({ sampleNx: this.arrowConfig.sampleNx }));
-        this.gui.sampleNy = densityFolder.add(this.arrowConfig, 'sampleNy', 1, 50, 1)
+        this.gui.sampleNy = this.gui.densityFolder.add(this.arrowConfig, 'sampleNy', 1, 50, 1)
             .name('Ny').onFinishChange(() => this.updateArrowConfig({ sampleNy: this.arrowConfig.sampleNy }));
-        this.gui.sampleNz = densityFolder.add(this.arrowConfig, 'sampleNz', 1, 50, 1)
+        this.gui.sampleNz = this.gui.densityFolder.add(this.arrowConfig, 'sampleNz', 1, 50, 1)
             .name('Nz').onFinishChange(() => this.updateArrowConfig({ sampleNz: this.arrowConfig.sampleNz }));
         this.updateSamplingRange();
         
@@ -551,6 +557,11 @@ class Visualization {
         arrowFolder.add(this.arrowConfig, 'colormap', getAvailableColormaps())
             .name('Colormap')
             .onChange((value) => this.updateArrowConfig({ colormap: value }));
+        
+        // Arrow display ratio (for FEM)
+        arrowFolder.add(this.arrowConfig, 'displayRatio', 0.01, 1.0, 0.01)
+            .name('Display Ratio')
+            .onChange((value) => this.updateArrowConfig({ displayRatio: value }));
 
         // Surface visibility toggle
         this.gui.showSurface = magnetizationFolder.add(this.surfaceConfig, 'visible').name('Show Surface/Isosurface')
@@ -681,6 +692,8 @@ class Visualization {
      * @param {Object} meshData - FEMesh data containing coordinates, cell_verts, region_ids
      */
     displayFEMesh(meshData) {
+        console.log('Visualization.displayFEMesh: coordinates length:', meshData?.coordinates?.length);
+        
         this.clearAllVisualizations();
         
         // Ensure consistent scale factor between FD and FE meshes
@@ -692,12 +705,33 @@ class Visualization {
         
         this.feMeshVisualization.displayFEMesh(meshData);
         
-        // Adjust camera to fit the mesh
-        // Note: We'll need to implement this in FEMeshVisualization if needed
+        // Set grid info for arrow visualization with FEM coordinates
+        if (meshData.coordinates) {
+            const numNodes = meshData.coordinates.length;
+            this.arrowVisualization.setGridInfo([numNodes, 1, 1], [1, 1, 1], 'fe', meshData.coordinates);
+            this.arrowVisualization.femScaleFactor = this.feMeshVisualization.scaleFactor;
+        }
         
-        // Update other visualizations with FEMesh information
-        // This would require extending arrow and surface visualizations
-        // to support FEMesh data, which is beyond the scope of this implementation
+        // Toggle GUI controls based on mesh type
+        this.updateArrowGUIControls('fe');
+    }
+    
+    updateArrowGUIControls(meshType) {
+        if (!this.gui || !this.gui.samplingMethod) return;
+        
+        // Show/hide based on mesh type
+        if (meshType === 'fe') {
+            // Hide FD-specific controls for FEM
+            this.gui.samplingMethod?.hide();
+            this.gui.densityFolder?.hide();
+            this.gui.showSurface?.hide();
+            this.gui.surfaceFolder?.hide();
+        } else {
+            // Show FD controls
+            this.gui.samplingMethod?.show();
+            this.gui.densityFolder?.show();
+            this.gui.showSurface?.show();
+        }
     }
     
     /**
@@ -726,9 +760,7 @@ class Visualization {
             if (this.fdMesh) {
                 // If mesh exists, update it with new Ms data
                 this.fdMeshVisualization.updateMesh(this.fdMesh, visData.Ms);
-            } else {
-                console.warn('No mesh available to update with Ms data');
-            }
+            } 
         }
     }
 }

@@ -16,6 +16,11 @@ class ArrowVisualization {
         this.cellSize = null;
         this.needsResample = true;
         
+        // FEM mesh support
+        this.meshType = 'fd'; // 'fd' or 'fe'
+        this.femCoordinates = null;
+        this.femScaleFactor = 0.02;
+        
         // Store initial positions for optimization in updateArrowInstances
         this.initialCylinderPositions = null;
         this.initialConePositions = null;
@@ -33,12 +38,23 @@ class ArrowVisualization {
             radius: 10,
             ringNum: 4,
             ringStep: 5,
+            displayRatio: 1.0, // For FEM: ratio of arrows to display (0-1)
         };
     }
 
-    setGridInfo(gridSize, dimensions) {
+    setGridInfo(gridSize, dimensions, meshType = 'fd', coordinates = null) {
         this.gridSize = gridSize;
         this.dimensions = dimensions;
+        this.meshType = meshType;
+        this.femCoordinates = coordinates;
+        
+        if (meshType === 'fe' && coordinates) {
+            // FEM uses coordinates directly, no cell size needed
+            this.needsResample = true;
+            return;
+        }
+        
+        // FD mesh
         this.cellSize = [
             dimensions[0] / gridSize[0],
             dimensions[1] / gridSize[1],
@@ -50,11 +66,46 @@ class ArrowVisualization {
         this.needsResample = true;
     }
 
-    updateMagnetization(data, updatePosition=false, options = {}) {
-        if (!data || !this.gridSize || !this.dimensions) {
+    updateMagnetization(data, updatePosition = false, options = {}) {
+        if (!data || !this.gridSize) {
             return;
         }
-               
+        
+        // Delegate to appropriate handler based on mesh type
+        if (this.meshType === 'fe' && this.femCoordinates) {
+            this.updateMagnetizationFEM(data, options);
+        } else {
+            this.updateMagnetizationFD(data, updatePosition, options);
+        }
+    }
+    
+    updateMagnetizationFEM(data, options) {
+        // Update settings from options
+        if (options.arrowSize !== undefined) {
+            this.settings.arrowSize = options.arrowSize;
+        }
+        if (options.displayRatio !== undefined) {
+            this.settings.displayRatio = options.displayRatio;
+        }
+        if (options.component !== undefined) {
+            this.component = options.component;
+        }
+        if (options.colormap !== undefined) {
+            this.colormap = options.colormap;
+        }
+        
+        // Calculate dynamic arrow scale based on average node spacing
+        let arrowScale  = 0.1 * this.settings.arrowSize;
+        
+        this.data = data.spin || data;
+        this.calculateFEMArrowPositions();
+        
+        if (this.arrowPositions && this.arrowPositions.length > 0) {
+            this.updateArrowInstances(this.collectFEMArrowData(), arrowScale);
+        }
+    }
+    
+    updateMagnetizationFD(data, updatePosition, options) {
         const [nx, ny, nz] = this.gridSize;
         
         if (data.length !== nx * ny * nz * 3) {
@@ -71,26 +122,14 @@ class ArrowVisualization {
             this.initialArrowScale = null;
         }
 
-        this.settings.sampling = options.sampling;
-        if (options.sampling === 'cartesian') {
-            this.settings.sampleNx = options.sampleNx;
-            this.settings.sampleNy = options.sampleNy;
-        } else {
-            this.settings.ringNum = options.sampleNx;
-             this.settings.ringStep = options.sampleNy;
-        }   
-        this.settings.sampleNz = options.sampleNz;
-        this.settings.arrowSize = options.arrowSize;
-        this.component = options.component;
-        this.colormap = options.colormap;
+        this.settings.sampling = options.sampling || this.settings.sampling;
+        if (options.sampleNx !== undefined) this.settings.sampleNx = options.sampleNx;
+        if (options.sampleNy !== undefined) this.settings.sampleNy = options.sampleNy;
+        if (options.sampleNz !== undefined) this.settings.sampleNz = options.sampleNz;
+        if (options.arrowSize !== undefined) this.settings.arrowSize = options.arrowSize;
+        if (options.component !== undefined) this.component = options.component;
+        if (options.colormap !== undefined) this.colormap = options.colormap;
         
-        // Recalculate arrow positions if sampling settings changed
-        if ( updatePosition || !this.arrowPositions) {
-            this.calculateArrowPositions();
-            this.initialCylinderPositions = null;
-            this.initialConePositions = null;
-            this.initialArrowScale = null;
-        }
         const arrowData = this.collectArrowData();
         if (arrowData.length === 0) {
             return;
@@ -223,6 +262,78 @@ class ArrowVisualization {
                 }
             }
         }
+    }
+    
+    calculateFEMArrowPositions() {
+        const coordinates = this.femCoordinates;
+        if (!coordinates || !this.data) {
+            return;
+        }
+        
+        const { displayRatio } = this.settings;
+        const totalPoints = coordinates.length;
+        
+        // Random sampling based on displayRatio
+        // Generate a random seed that stays consistent until displayRatio changes
+        if (!this._randomSeed || this._displayRatio !== displayRatio) {
+            this._randomSeed = Math.random();
+            this._displayRatio = displayRatio;
+        }
+        const random = this._randomSeed;
+        
+        this.arrowPositions = [];
+        
+        for (let i = 0; i < totalPoints; i++) {
+            // Simple pseudo-random check based on position index
+            const r = ((i * 9301 + 49297) % 233280) / 233280;
+            if (r < displayRatio) {
+                const [x, y, z] = coordinates[i];
+                
+                this.arrowPositions.push({
+                    world: [
+                        x * this.femScaleFactor,
+                        y * this.femScaleFactor,
+                        z * this.femScaleFactor
+                    ],
+                    spinIndex: i
+                });
+            }
+        }
+    }
+    
+    collectFEMArrowData() {
+        if (!this.arrowPositions || !this.data) {
+            return [];
+        }
+        
+        const arrowData = [];
+        const componentIndex = this.getComponentIndex(this.component);
+        
+        for (let i = 0; i < this.arrowPositions.length; i++) {
+            const pos = this.arrowPositions[i].world;
+            const spinIdx = this.arrowPositions[i].spinIndex * 3;
+            
+            // Check bounds
+            if (spinIdx + 2 >= this.data.length) {
+                break;
+            }
+            
+            let mx = this.data[spinIdx];
+            let my = this.data[spinIdx + 1];
+            let mz = this.data[spinIdx + 2];
+            
+            // Use component for color value
+            const componentValues = [mx, my, mz];
+            const colorValue = componentValues[componentIndex];
+            
+            arrowData.push({
+                position: pos,
+                direction: [mx, my, mz],
+                colorValue: colorValue
+            });
+        }
+        
+        return arrowData;
     }
 
     trilinearInterpolation(x, y, z) {
@@ -373,7 +484,19 @@ class ArrowVisualization {
     }
 
     updateArrowInstances(arrowData, arrowScale) {
-        if (this.arrows.length < 2) return;
+         
+        // Check if we need to recreate arrows (different count or not created)
+        const needsRecreation = this.arrows.length < 2 || 
+            (this.arrows[0] && this.arrows[0].count !== arrowData.length) ||
+            this.meshType === 'fe' ||
+            this.initialArrowScale !== arrowScale;
+        
+        if (needsRecreation) {
+            // Clear existing
+            this.clearArrows();
+            this.createArrowInstances(arrowData, arrowScale);
+            return;
+        }
         
         const cylinderMesh = this.arrows[0];
         const coneMesh = this.arrows[1];

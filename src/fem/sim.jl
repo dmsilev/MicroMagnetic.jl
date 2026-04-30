@@ -38,6 +38,8 @@ function init_m0(sim::MicroSimFE, m0::TupleOrArrayOrFunction; norm=true)
     if isdefined(sim.driver, :integrator) && sim.driver.integrator isa AdaptiveRK
         set_initial_condition!(sim, sim.driver.integrator)
     end
+
+    send_visualization_data(spin=sim.spin)
 end
 
 function average_m(sim::MicroSimFE)
