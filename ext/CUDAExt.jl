@@ -16,7 +16,8 @@ function set_cuda_backend()
 end
 
 set_cuda_backend()
-MicroMagnetic.setup_workload()
+
+include(joinpath(@__DIR__, "..", "src", "precompile.jl"))
 
 function __init__()
     return set_cuda_backend()
