@@ -103,7 +103,7 @@ end
 
 """
     set_region(mesh::FDMesh, region_id::Int, shape::CSGShape)
-    set_region(mesh::FDMesh, shape::CSGShape; region_id=1)
+    set_region(mesh::FDMesh, shape::CSGShape, region_id=1)
 
 Set the region ID for cells inside the specified shape.
 
@@ -122,12 +122,11 @@ sphere = Sphere(radius=10e-9, center=(10e-9, 10e-9, 0))
 
 # Option 1: With positional region_id (backward compatible)
 set_region(mesh, 1, sphere)
+# or
+set_region(mesh, sphere, 1)
 
 # Option 2: With keyword region_id (more readable)
 set_region(mesh, sphere; region_id=1)
-
-# Option 3: With default region_id
-set_region(mesh, sphere)  # Uses region_id=1
 ```
 """
 function set_region(mesh::FDMesh, region_id::Int, shape::CSGShape)
@@ -152,6 +151,10 @@ end
 
 # Overloaded method with shape first and optional region_id
 function set_region(mesh::FDMesh, shape::CSGShape; region_id::Int=1)
+    return set_region(mesh, region_id, shape)
+end
+# This allows calling as set_region(mesh, sphere, 1) or set_region(mesh, sphere, id=1)
+function set_region(mesh::FDMesh, shape::CSGShape, region_id::Int)
     return set_region(mesh, region_id, shape)
 end
 

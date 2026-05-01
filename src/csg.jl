@@ -52,16 +52,17 @@ plane = Plane(point=(1, 2, 3), normal=(1, 1, 1))
 ```
 """
 struct Plane <: CSGShape
-    point::Tuple{Real,Real,Real} # A point in the plane
-    normal::Tuple{Real,Real,Real} # the normal of the plane
+    point::Tuple{Real,Real,Real}
+    normal::Tuple{Real,Real,Real}
 
     function Plane(; point::Tuple=(0.0, 0.0, 0.0), normal::Tuple=(0.0, 0.0, 1.0))
         return new(point, normalize(normal))
     end
 end
+Plane(point, normal) = Plane(; point=point, normal=normal)
 
 """
-    Sphere(; center::Tuple=(0.0, 0.0, 0.0), radius=1.0)
+    Sphere(; center::Tuple=(0.0, 0.0, 0.0), radius::Real=1.0)
 
 Create a Sphere shape.
 
@@ -78,19 +79,24 @@ sphere = Sphere()
 
 # Create a sphere at (2, 0, 0) with radius 5.0
 sphere = Sphere(center=(2, 0, 0), radius=5.0)
+
+# Positional arguments
+sphere = Sphere((2, 0, 0), 5.0)
 ```
 """
 struct Sphere <: CSGShape # A sphere
     center::Tuple{Real,Real,Real}
     radius::Float64
 
-    function Sphere(; center::Tuple=(0.0, 0.0, 0.0), radius=1.0)
-        return new(center, radius)
+    function Sphere(; center::Tuple=(0.0, 0.0, 0.0), radius::Real=1.0)
+        return new(center, Float64(radius))
     end
 end
+Sphere(center, radius) = Sphere(; center=center, radius=radius)
+Sphere(center::Tuple) = Sphere(; center=center)
 
 """
-    Cylinder(; center=(0.0, 0.0, 0.0), radius=1.0, height=Inf, normal=(0.0, 0.0, 1.0))
+    Cylinder(; center::Tuple=(0.0, 0.0, 0.0), radius::Real=1.0, height::Real=Inf, normal::Tuple=(0.0, 0.0, 1.0))
 
 Create a Cylinder shape.
 
@@ -109,20 +115,25 @@ cylinder = Cylinder()
 
 # Create a finite cylinder along y-axis
 cylinder = Cylinder(center=(0, 0, 0), radius=2.0, height=10.0, normal=(0, 1, 0))
+
+# Positional arguments
+cylinder = Cylinder((0, 0, 0), 2.0, 10.0)
 ```
 """
 struct Cylinder <: Shape
     center::Tuple{Real,Real,Real}
     radius::Float64
     height::Float64
-    normal::Tuple{Real,Real,Real} #should be normalized
+    normal::Tuple{Real,Real,Real}
 
-    function Cylinder(; center::Tuple=(0.0, 0.0, 0.0), radius=1.0, height=Inf,
+    function Cylinder(; center::Tuple=(0.0, 0.0, 0.0), radius::Real=1.0, height::Real=Inf,
                       normal::Tuple=(0.0, 0.0, 1.0))
         n = normalize(normal)
-        return new(center, radius, height, n)
+        return new(center, Float64(radius), Float64(height), n)
     end
 end
+Cylinder(center, radius, height) = Cylinder(; center=center, radius=radius, height=height)
+Cylinder(center, radius) = Cylinder(; center=center, radius=radius)
 
 """
     Box(; center::Tuple=(0.0, 0.0, 0.0), size::Tuple=(1.0, 1.0, 1.0), theta=0.0)
@@ -148,14 +159,17 @@ box = Box(center=(1, 1, 1), size=(2, 3, 4), theta=pi/4)
 struct Box <: CSGShape
     center::Tuple{Real,Real,Real}
     size::Tuple{Real,Real,Real}
-    theta::Float64 # the rotated angle
-    function Box(; center::Tuple=(0.0, 0.0, 0.0), size::Tuple=(1.0, 1.0, 1.0), theta=0.0)
-        return new(center, size, theta)
+    theta::Float64
+
+    function Box(; center::Tuple=(0.0, 0.0, 0.0), size::Tuple=(1.0, 1.0, 1.0), theta::Real=0.0)
+        return new(center, size, Float64(theta))
     end
 end
+Box(center, size) = Box(; center=center, size=size)
+Box(size) = Box(; size=size)
 
 """
-    Torus(; center::Tuple=(0.0, 0.0, 0.0), R=1.0, r=0.2)
+    Torus(; center::Tuple=(0.0, 0.0, 0.0), R::Real=1.0, r::Real=0.2)
 
 Create a Torus shape.
 
@@ -185,6 +199,7 @@ struct Torus <: CSGShape
         return new(center, R, r)
     end
 end
+Torus(center, R, r) = Torus(; center, R, r) 
 
 +(a::CSGShape, b::CSGShape) = UnionShape(a, b)
 *(a::CSGShape, b::CSGShape) = IntersectionShape(a, b)
