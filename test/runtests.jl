@@ -27,6 +27,7 @@ include("test_sahe_torque.jl")
 include("test_ovf.jl")
 include("test_interlayer.jl")
 include("test_skyrmion_number.jl")
+include("test_hysteresis.jl")
 
 include("atomistic/test_mesh.jl")
 include("atomistic/test_llg.jl")

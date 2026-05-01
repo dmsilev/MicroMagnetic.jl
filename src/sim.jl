@@ -655,7 +655,7 @@ hysteresis(sim, Hs; full_loop=true)
 hysteresis(sim, Hs, direction=(0, 1, 0))
 ```
 
-Note that `Hs` can be an array of numbers, tuples of 3 numbers, arrays, or even functions,
+Note that `Hs` can be an array of numbers, tuples of 3 numbers, arrays, or functions,
 because the `update_zeeman` function accepts `TupleOrArrayOrFunction`. In such cases, 
 the `direction` parameter is ignored.
 
@@ -678,7 +678,7 @@ function hysteresis(sim::AbstractSim, Hs::AbstractVector; direction::Tuple=(1, 0
     # Data for hysteresis plot
     H_values = Float64[]
     m_values = Float64[]
-    
+
     # Function to send hysteresis data to frontend
     function send_hysteresis_data(H_vals, m_vals)
         if global_client != nothing
@@ -708,10 +708,17 @@ function hysteresis(sim::AbstractSim, Hs::AbstractVector; direction::Tuple=(1, 0
             update_zeeman(sim, (Hx, Hy, Hz))
             # Store H value for plot
             push!(H_values, H / mT)
-        else
-            update_zeeman(sim, H, H_output=H_output[i])
-            # Store H value for plot (use norm of H)
+        elseif (isa(H, Tuple) || isa(H, Array)) && length(H) == 3
+            update_zeeman(sim, H)
             push!(H_values, (H[1]^2 + H[2]^2 + H[3]^2)^0.5 / mT)
+        else
+            # other situations such as a function, or a long array.
+            if H_output === nothing
+                error("H_output must be provided!")
+            end
+            Hout = H_output[i]
+            update_zeeman(sim, H, H_output=Hout)
+            push!(H_values, (Hout[1]^2 + Hout[2]^2 + Hout[3]^2)^0.5 / mT)
         end
         
         relax(sim; stopping_dmdt=stopping_dmdt, max_steps=max_steps, save_m_every=-1)
@@ -737,7 +744,6 @@ function hysteresis(sim::AbstractSim, Hs::AbstractVector; direction::Tuple=(1, 0
         return
     end
     
-    H_output_rev = reverse(H_output)
     for (i, H) in enumerate(reverse(Hs))
         if isa(H, Number)
             Hx = H * direction[1] / norm
@@ -746,11 +752,17 @@ function hysteresis(sim::AbstractSim, Hs::AbstractVector; direction::Tuple=(1, 0
             update_zeeman(sim, (Hx, Hy, Hz))
             # Store H value for plot
             push!(H_values, H / mT)
-        else
-            update_zeeman(sim, H, H_output=H_output_rev[i])
-            # Store H value for plot (use norm of H)
+        elseif (isa(H, Tuple) || isa(H, Array)) && length(H) == 3
+            update_zeeman(sim, H)
             push!(H_values, (H[1]^2 + H[2]^2 + H[3]^2)^0.5 / mT)
+        else
+            N = length(Hs)
+            Hout = H_output[N-i+1]
+            update_zeeman(sim, H, H_output=Hout)
+            # Store H value for plot (use norm of H)
+            push!(H_values, (Hout[1]^2 + Hout[2]^2 + Hout[3]^2)^0.5 / mT)
         end
+
         relax(sim; stopping_dmdt=stopping_dmdt, max_steps=max_steps, save_m_every=-1)
         if output == "ovf"
             save_ovf(sim, joinpath(output_folder, @sprintf("m_%08d.ovf", stage)))
